@@ -1,6 +1,6 @@
 {
   "dependencies": {
-    "com.excelconfigcompiler": {
+    "com.setsuodu.excelconfig": {
       "version": "file:com.setsuodu.excelconfig",
       "depth": 0,
       "source": "embedded",
