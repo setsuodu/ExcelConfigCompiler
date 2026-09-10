@@ -1,0 +1,114 @@
+# 路径：.github/workflows/publish-cli.yml
+# Actions → Publish CLI → Run workflow（可选手动填 tag 发 Release）
+name: Publish CLI
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release tag（如 v1.0.1）。留空则只构建 Artifact，不发 Release"
+        required: false
+        default: ""
+      create_release:
+        description: "是否上传到 GitHub Release"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - rid: win-x64
+            out_name: ExcelConfigCompiler-win-x64.exe
+          - rid: linux-x64
+            out_name: ExcelConfigCompiler-linux-x64
+          - rid: osx-arm64
+            out_name: ExcelConfigCompiler-osx-arm64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Ensure Cli csproj
+        run: |
+          set -e
+          CLI_DIR="Packages/com.setsuodu.excelconfigcompiler/Cli"
+          CSPROJ="$CLI_DIR/ExcelConfigCompiler.Cli.csproj"
+          if [ ! -f "$CSPROJ" ]; then
+            printf '%s\n' \
+              '<Project Sdk="Microsoft.NET.Sdk">' \
+              '  <PropertyGroup>' \
+              '    <OutputType>Exe</OutputType>' \
+              '    <TargetFramework>net8.0</TargetFramework>' \
+              '    <ImplicitUsings>disable</ImplicitUsings>' \
+              '    <Nullable>disable</Nullable>' \
+              '    <RootNamespace>ExcelConfigCompiler.Cli</RootNamespace>' \
+              '    <AssemblyName>ExcelConfigCompiler</AssemblyName>' \
+              '    <LangVersion>latest</LangVersion>' \
+              '  </PropertyGroup>' \
+              '  <ItemGroup>' \
+              '    <PackageReference Include="EPPlus" Version="7.5.2" />' \
+              '  </ItemGroup>' \
+              '  <ItemGroup>' \
+              '    <Compile Include="Program.cs" />' \
+              '    <Compile Include="..\Editor\Compiler\**\*.cs" />' \
+              '    <Compile Include="..\Runtime\**\*.cs" />' \
+              '  </ItemGroup>' \
+              '</Project>' > "$CSPROJ"
+            echo "Generated $CSPROJ"
+          fi
+
+      - name: Publish
+        working-directory: Packages/com.setsuodu.excelconfigcompiler/Cli
+        run: |
+          set -e
+          dotnet publish ExcelConfigCompiler.Cli.csproj -c Release -r ${{ matrix.rid }} \
+            --self-contained true \
+            -p:PublishSingleFile=true \
+            -p:IncludeNativeLibrariesForSelfExtract=true \
+            -o "publish/${{ matrix.rid }}"
+          mkdir -p out
+          if [ "${{ matrix.rid }}" = "win-x64" ]; then
+            cp publish/${{ matrix.rid }}/ExcelConfigCompiler.exe "out/${{ matrix.out_name }}"
+          else
+            cp publish/${{ matrix.rid }}/ExcelConfigCompiler "out/${{ matrix.out_name }}"
+            chmod +x "out/${{ matrix.out_name }}"
+          fi
+          ls -la out/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cli-${{ matrix.rid }}
+          path: Packages/com.setsuodu.excelconfigcompiler/Cli/out/${{ matrix.out_name }}
+          if-no-files-found: error
+
+  release:
+    needs: build
+    if: ${{ inputs.create_release && inputs.version != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: cli-*
+          merge-multiple: true
+
+      - run: find dist -type f -ls
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.version }}
+          name: ExcelConfigCompiler CLI ${{ inputs.version }}
+          generate_release_notes: true
+          files: dist/**
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
