@@ -12,17 +12,18 @@
 /[Uu]serSettings/
 /[Bb]in/
 /[Rr]eplay/
+# 测试例子
+/Assets/Config/
+/Assets/Samples/
 # 忽略 StreamingAssets 里打出来的 AB，但保留配置
-/Assets/StreamingAssets/*
-!/Assets/StreamingAssets/ab_config.json
-!/Assets/StreamingAssets/ab_config.json.meta
+/Assets/StreamingAssets/
 # Packages：只忽略不需要的，不要整目录 /*
 # 本地嵌入包、manifest、lock 要提交
 /Packages/*
 !/Packages/manifest.json
 !/Packages/packages-lock.json
-!/Packages/com.setsuodu.assetbundleframework/
-!/Packages/com.setsuodu.assetbundleframework/**
+!/Packages/com.setsuodu.excelconfig/
+!/Packages/com.setsuodu.excelconfig/**
 ~$*
 
 # Never ignore Asset meta data
@@ -72,3 +73,4 @@ sysinfo.txt
 
 # Crashlytics generated file
 crashlytics-build.properties
+/Assets/Samples.meta

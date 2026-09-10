@@ -1,0 +1,16 @@
+【必做】把 EPPlus.dll 放到本文件夹
+
+1. 打开你下载的 epplus.7.5.2.nupkg（当 zip 解压）
+2. 进入：lib / netstandard2.1 /
+3. 复制 EPPlus.dll
+4. 粘贴到本目录，最终路径应为：
+
+   Packages/com.setsuodu.excelconfig/Editor/Plugins/EPPlus.dll
+
+5. 回到 Unity，等右下角编译完成
+6. 菜单应出现：Tools → Excel Config Compiler
+
+注意：
+- 只要 EPPlus.dll，不要 EPPlus.xml
+- 文件名必须是 EPPlus.dll（大小写一致）
+- 放错位置会导致 OfficeOpenXml 找不到，Editor 菜单也不会出现

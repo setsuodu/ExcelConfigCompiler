@@ -1,0 +1,14 @@
+菜单 Tools 是空的 = Editor 还在报错，通常是缺 EPPlus.dll。
+
+请把 EPPlus.dll 放到：
+
+  Packages/你的包名/Editor/Plugins/EPPlus.dll
+
+获取方式：
+  1. 下载 epplus.7.5.2.nupkg
+  2. 改后缀为 .zip 或直接解压
+  3. 打开 lib/netstandard2.1/EPPlus.dll
+  4. 复制到上面的 Plugins 目录
+
+放好后 Unity 重新编译，菜单会出现：
+  Tools → Excel Config Compiler

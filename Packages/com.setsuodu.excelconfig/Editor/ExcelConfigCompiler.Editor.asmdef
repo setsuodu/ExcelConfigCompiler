@@ -1,0 +1,20 @@
+{
+    "name": "ExcelConfigCompiler.Editor",
+    "rootNamespace": "ExcelConfigCompiler.Editor",
+    "references": [
+        "ExcelConfigCompiler.Runtime"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "EPPlus.dll"
+    ],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

@@ -1,0 +1,40 @@
+# Build
+bin/
+obj/
+*.user
+*.suo
+.vs/
+.idea/
+
+# Unity
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Uu]ser[Ss]ettings/
+*.csproj.user
+*.unityproj
+*.sln
+*.suo
+*.tmp
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Publish
+**/publish/
+*.exe
+*.dll
+!Editor/Plugins/**/*.dll
