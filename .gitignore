@@ -22,8 +22,8 @@
 /Packages/*
 !/Packages/manifest.json
 !/Packages/packages-lock.json
-!/Packages/com.setsuodu.excelconfig/
-!/Packages/com.setsuodu.excelconfig/**
+!/Packages/com.setsuodu.excelconfigcompiler/
+!/Packages/com.setsuodu.excelconfigcompiler/**
 ~$*
 
 # Never ignore Asset meta data
