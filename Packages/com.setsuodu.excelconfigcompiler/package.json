@@ -1,8 +1,8 @@
 {
-  "name": "com.setsuodu.excelconfig",
+  "name": "com.setsuodu.excelconfigcompiler",
   "displayName": "Excel Config Compiler",
   "version": "1.0.0",
-  "unity": "2021.3",
+  "unity": "2022.3",
   "description": "Lightweight Excel → C# code + binary config compiler for Unity. EPPlus read tables, generate explicit Read/Write (no reflection), runtime ByteReader is ref struct (0 GC numeric path). Similar to Luban code-gen approach but minimal.",
   "keywords": [
     "excel",
