@@ -5,9 +5,9 @@
   "description": "Lightweight Excel → C# code + binary config compiler for Unity. EPPlus read tables, generate explicit Read/Write (no reflection), runtime ByteReader is ref struct (0 GC numeric path). Similar to Luban code-gen approach but minimal.",
   "unity": "2022.3",
   "unityRelease": "0f1",
-  "documentationUrl": "https://github.com/setsuodu/excelconfigcompiler/blob/main/Packages/com.setsuodu.excelconfigcompiler/README.md",
-  "changelogUrl": "https://github.com/setsuodu/excelconfigcompiler/blob/main/Packages/com.setsuodu.excelconfigcompiler/CHANGELOG.md",
-  "licensesUrl": "https://github.com/setsuodu/excelconfigcompiler/blob/main/Packages/com.setsuodu.excelconfigcompiler/LICENSE",
+  "documentationUrl": "https://github.com/setsuodu/ExcelConfigCompiler/blob/main/Packages/com.setsuodu.excelconfigcompiler/README.md",
+  "changelogUrl": "https://github.com/setsuodu/ExcelConfigCompiler/blob/main/Packages/com.setsuodu.excelconfigcompiler/CHANGELOG.md",
+  "licensesUrl": "https://github.com/setsuodu/ExcelConfigCompiler/blob/main/Packages/com.setsuodu.excelconfigcompiler/LICENSE",
   "license": "MIT",
   "keywords": [
     "excel",
