@@ -12,7 +12,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0c37923d49f496d449c561f8eec900a0, type: 3}
   m_Name: ExcelConfigCompilerSettings
   m_EditorClassIdentifier: ExcelConfigCompiler.Editor::ExcelConfigCompiler.Editor.ExcelConfigSettings
-  ExcelSourceFolder: Assets/Config/Excel
-  GeneratedCodeFolder: Assets/Config/Generated
-  GeneratedBytesFolder: Assets/Config/Tables
-  Namespace: Game.Config
+  ExcelSourceFolder: Assets/Config/Excel/Client
+  ClientNamespace: Game.Config
+  ClientCodeFolder: Assets/Config/Generated
+  ClientBytesFolder: Assets/Config/Tables
+  ServerNamespace: Game.Server.Config
+  ServerCodeFolder: 
+  ServerBytesFolder: 
+  UseFrozenDictionary: 1
