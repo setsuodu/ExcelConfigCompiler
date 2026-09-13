@@ -34,6 +34,8 @@
     <Compile Include="..\Editor\Compiler\ExcelParser.cs" Link="Compiler\ExcelParser.cs" />
     <Compile Include="..\Editor\Compiler\BinaryGenerator.cs" Link="Compiler\BinaryGenerator.cs" />
     <Compile Include="..\Editor\Compiler\CSharpGenerator.cs" Link="Compiler\CSharpGenerator.cs" />
+    <Compile Include="..\Editor\Compiler\ServerCSharpGenerator.cs" Link="Compiler\ServerCSharpGenerator.cs" />
+    <Compile Include="..\Editor\Compiler\ManifestWriter.cs" Link="Compiler\ManifestWriter.cs" />
     <Compile Include="..\Editor\Compiler\CompilePipeline.cs" Link="Compiler\CompilePipeline.cs" />
   </ItemGroup>
 

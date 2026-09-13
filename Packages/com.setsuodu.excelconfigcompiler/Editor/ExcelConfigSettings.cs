@@ -3,24 +3,37 @@ using UnityEngine;
 namespace ExcelConfigCompiler.Editor
 {
     /// <summary>
-    /// 导表路径配置。可放在 Assets 任意位置，EditorWindow 会自动查找或创建。
+    /// 导表路径：Excel 根、客户端输出、服务器输出三者分开，不套 OutputRoot/client。
     /// </summary>
     public class ExcelConfigSettings : ScriptableObject
     {
-        [Header("输入")]
-        [Tooltip("Excel 源表目录（可放多个 .xlsx）")]
-        public string ExcelSourceFolder = "Assets/Config/Excel";
+        [Header("1. Excel 输入")]
+        [Tooltip("Excel 根目录（其下必须有 Client / Server / Shared）")]
+        public string ExcelSourceFolder = "Excel";
 
-        [Header("输出")]
-        [Tooltip("生成的 C# 代码输出目录")]
-        public string GeneratedCodeFolder = "Assets/Config/Generated";
+        [Header("2. 客户端输出")]
+        [Tooltip("客户端生成代码命名空间")]
+        public string ClientNamespace = "Game.Config";
 
-        [Tooltip("生成的 .bytes 二进制输出目录")]
-        public string GeneratedBytesFolder = "Assets/Config/Tables";
+        [Tooltip("客户端 .cs 输出目录（直接写入此目录，不再拼 /client）")]
+        public string ClientCodeFolder = "Assets/Config/Generated";
 
-        [Header("代码生成")]
-        [Tooltip("生成代码的命名空间")]
-        public string Namespace = "Game.Config";
+        [Tooltip("客户端 .bytes 输出目录")]
+        public string ClientBytesFolder = "Assets/Config/Tables";
+
+        [Header("3. 服务器输出")]
+        [Tooltip("服务器生成代码命名空间（通常与客户端不同）")]
+        public string ServerNamespace = "Game.Server.Config";
+
+        [Tooltip("服务器 .cs 输出目录")]
+        public string ServerCodeFolder = "";
+
+        [Tooltip("服务器 .bytes 输出目录")]
+        public string ServerBytesFolder = "";
+
+        [Header("4. 服务器模板")]
+        [Tooltip("使用 FrozenDictionary（需 net8+）；关闭则用 Dictionary")]
+        public bool UseFrozenDictionary = true;
 
         public const string DefaultAssetPath = "Assets/ExcelConfigCompilerSettings.asset";
     }

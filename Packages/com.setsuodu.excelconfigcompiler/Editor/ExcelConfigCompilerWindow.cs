@@ -6,10 +6,6 @@ using ExcelConfigCompiler.Compiler;
 
 namespace ExcelConfigCompiler.Editor
 {
-    /// <summary>
-    /// Unity 编辑器一键导表窗口。
-    /// 菜单：Tools / Excel Config Compiler
-    /// </summary>
     public class ExcelConfigCompilerWindow : EditorWindow
     {
         private ExcelConfigSettings _settings;
@@ -21,22 +17,18 @@ namespace ExcelConfigCompiler.Editor
         public static void Open()
         {
             var win = GetWindow<ExcelConfigCompilerWindow>("Excel Config Compiler");
-            win.minSize = new Vector2(480, 360);
+            win.minSize = new Vector2(520, 440);
             win.Show();
         }
 
-        private void OnEnable()
-        {
-            LoadOrCreateSettings();
-        }
+        private void OnEnable() => LoadOrCreateSettings();
 
         private void LoadOrCreateSettings()
         {
             var guids = AssetDatabase.FindAssets("t:ExcelConfigSettings");
             if (guids.Length > 0)
             {
-                var path = AssetDatabase.GUIDToAssetPath(guids[0]);
-                _settings = AssetDatabase.LoadAssetAtPath<ExcelConfigSettings>(path);
+                _settings = AssetDatabase.LoadAssetAtPath<ExcelConfigSettings>(AssetDatabase.GUIDToAssetPath(guids[0]));
                 return;
             }
 
@@ -55,37 +47,43 @@ namespace ExcelConfigCompiler.Editor
                 return;
             }
 
-            EditorGUILayout.Space(8);
+            EditorGUILayout.Space(6);
             EditorGUILayout.LabelField("Excel Config Compiler", EditorStyles.boldLabel);
             EditorGUILayout.HelpBox(
-                "EPPlus 读表 → 生成显式 Read/Write 的 C# 代码 + 二进制 .bytes\n" +
-                "Runtime 使用 ref struct ByteReader，数值路径 0 GC，AOT/IL2CPP 友好。",
+                "Excel 根下分 Client / Server / Shared。\n" +
+                "客户端、服务器输出目录各自填写，只写一份，不会再拼 /client。\n" +
+                "两端命名空间独立。",
                 MessageType.Info);
 
-            EditorGUILayout.Space(6);
             EditorGUI.BeginChangeCheck();
 
-            _settings.ExcelSourceFolder = FolderField("Excel 源目录", _settings.ExcelSourceFolder);
-            _settings.GeneratedCodeFolder = FolderField("代码输出目录", _settings.GeneratedCodeFolder);
-            _settings.GeneratedBytesFolder = FolderField("二进制输出目录", _settings.GeneratedBytesFolder);
-            _settings.Namespace = EditorGUILayout.TextField("命名空间", _settings.Namespace);
+            EditorGUILayout.LabelField("Excel 输入", EditorStyles.boldLabel);
+            _settings.ExcelSourceFolder = FolderField("Excel 根目录", _settings.ExcelSourceFolder);
+
+            EditorGUILayout.Space(4);
+            EditorGUILayout.LabelField("客户端输出", EditorStyles.boldLabel);
+            _settings.ClientNamespace = EditorGUILayout.TextField("客户端命名空间", _settings.ClientNamespace);
+            _settings.ClientCodeFolder = FolderField("客户端代码目录", _settings.ClientCodeFolder);
+            _settings.ClientBytesFolder = FolderField("客户端 bytes 目录", _settings.ClientBytesFolder);
+
+            EditorGUILayout.Space(4);
+            EditorGUILayout.LabelField("服务器输出", EditorStyles.boldLabel);
+            _settings.ServerNamespace = EditorGUILayout.TextField("服务器命名空间", _settings.ServerNamespace);
+            _settings.ServerCodeFolder = FolderField("服务器代码目录", _settings.ServerCodeFolder);
+            _settings.ServerBytesFolder = FolderField("服务器 bytes 目录", _settings.ServerBytesFolder);
+            _settings.UseFrozenDictionary = EditorGUILayout.Toggle("服务器 FrozenDictionary", _settings.UseFrozenDictionary);
 
             if (EditorGUI.EndChangeCheck())
-            {
                 EditorUtility.SetDirty(_settings);
-            }
 
-            EditorGUILayout.Space(12);
-
+            EditorGUILayout.Space(10);
             using (new EditorGUI.DisabledScope(_isCompiling))
             {
-                if (GUILayout.Button("一键导表 (Compile All)", GUILayout.Height(36)))
-                {
+                if (GUILayout.Button("一键导表", GUILayout.Height(36)))
                     Compile();
-                }
             }
 
-            EditorGUILayout.Space(8);
+            EditorGUILayout.Space(6);
             EditorGUILayout.LabelField("日志", EditorStyles.boldLabel);
             _scroll = EditorGUILayout.BeginScrollView(_scroll, GUILayout.ExpandHeight(true));
             EditorGUILayout.TextArea(_lastLog, GUILayout.ExpandHeight(true));
@@ -95,13 +93,12 @@ namespace ExcelConfigCompiler.Editor
         private string FolderField(string label, string path)
         {
             EditorGUILayout.BeginHorizontal();
-            path = EditorGUILayout.TextField(label, path);
+            path = EditorGUILayout.TextField(label, path ?? "");
             if (GUILayout.Button("...", GUILayout.Width(30)))
             {
                 var abs = EditorUtility.OpenFolderPanel(label, Application.dataPath, "");
                 if (!string.IsNullOrEmpty(abs))
                 {
-                    // 尽量转成相对 Assets 的路径
                     if (abs.StartsWith(Application.dataPath))
                         path = "Assets" + abs.Substring(Application.dataPath.Length).Replace('\\', '/');
                     else
@@ -118,47 +115,35 @@ namespace ExcelConfigCompiler.Editor
             _lastLog = "";
             try
             {
-                // 解析相对路径
                 string excelDir = ResolvePath(_settings.ExcelSourceFolder);
-                string codeDir = ResolvePath(_settings.GeneratedCodeFolder);
-                string bytesDir = ResolvePath(_settings.GeneratedBytesFolder);
-
                 if (!Directory.Exists(excelDir))
                 {
-                    Directory.CreateDirectory(excelDir);
-                    _lastLog += $"已创建源目录: {excelDir}\n请放入 .xlsx 后重试。\n";
+                    _lastLog += "[错误] Excel 根目录不存在: " + excelDir + "\n";
                     return;
                 }
 
-                // 为了简单，把代码和二进制都输出到同一个临时根，再分别移动
-                // 或者直接让 Pipeline 支持两个输出目录。这里简单处理：先输出到 codeDir 的父级再整理。
-                string tempRoot = Path.Combine(Path.GetTempPath(), "ExcelConfigCompiler_" + Guid.NewGuid().ToString("N"));
-                Directory.CreateDirectory(tempRoot);
-
-                var result = CompilePipeline.Compile(excelDir, tempRoot, _settings.Namespace);
-
-                // 复制产物到目标位置
-                Directory.CreateDirectory(codeDir);
-                Directory.CreateDirectory(bytesDir);
-
-                foreach (var f in result.GeneratedCodeFiles)
+                // 只写用户填的目录，不再走临时目录 / 二次拷贝 / OutputRoot
+                var result = CompilePipeline.Compile(new CompilePipeline.Options
                 {
-                    var dest = Path.Combine(codeDir, Path.GetFileName(f));
-                    File.Copy(f, dest, true);
-                }
-                foreach (var f in result.GeneratedBinaryFiles)
-                {
-                    var dest = Path.Combine(bytesDir, Path.GetFileName(f));
-                    File.Copy(f, dest, true);
-                }
-
-                try { Directory.Delete(tempRoot, true); } catch { /* ignore */ }
+                    ExcelRoot = excelDir,
+                    ClientCodeDir = string.IsNullOrWhiteSpace(_settings.ClientCodeFolder) ? null : ResolvePath(_settings.ClientCodeFolder),
+                    ClientBytesDir = string.IsNullOrWhiteSpace(_settings.ClientBytesFolder) ? null : ResolvePath(_settings.ClientBytesFolder),
+                    ClientNamespace = _settings.ClientNamespace,
+                    ServerCodeDir = string.IsNullOrWhiteSpace(_settings.ServerCodeFolder) ? null : ResolvePath(_settings.ServerCodeFolder),
+                    ServerBytesDir = string.IsNullOrWhiteSpace(_settings.ServerBytesFolder) ? null : ResolvePath(_settings.ServerBytesFolder),
+                    ServerNamespace = _settings.ServerNamespace,
+                    UseFrozenDictionary = _settings.UseFrozenDictionary,
+                    ManifestPath = Path.Combine(excelDir, "tables.lock.json"),
+                });
 
                 foreach (var msg in result.Messages)
                     _lastLog += msg + "\n";
 
-                _lastLog += $"\n完成：共 {result.TableCount} 张表，{result.TotalRows} 行。\n";
-                _lastLog += $"代码 → {codeDir}\n二进制 → {bytesDir}\n";
+                _lastLog += $"\n完成：{result.TableCount} 表 / {result.TotalRows} 行\n";
+                if (!string.IsNullOrEmpty(_settings.ClientCodeFolder))
+                    _lastLog += "客户端代码 → " + ResolvePath(_settings.ClientCodeFolder) + "\n";
+                if (!string.IsNullOrEmpty(_settings.ServerCodeFolder))
+                    _lastLog += "服务器代码 → " + ResolvePath(_settings.ServerCodeFolder) + "\n";
 
                 AssetDatabase.Refresh();
                 Debug.Log($"[ExcelConfigCompiler] 导表成功：{result.TableCount} 表 / {result.TotalRows} 行");
@@ -184,13 +169,11 @@ namespace ExcelConfigCompiler.Editor
         {
             if (string.IsNullOrWhiteSpace(path)) return Application.dataPath;
             if (Path.IsPathRooted(path)) return path;
-            // 相对 Assets
             if (path.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase) ||
                 path.StartsWith("Assets\\", StringComparison.OrdinalIgnoreCase))
-            {
                 return Path.GetFullPath(Path.Combine(Application.dataPath, "..", path));
-            }
-            return Path.GetFullPath(Path.Combine(Application.dataPath, path));
+            // 工程根相对（如 Excel，与 Assets 同级）
+            return Path.GetFullPath(Path.Combine(Application.dataPath, "..", path));
         }
     }
 }

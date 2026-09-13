@@ -1,56 +1,40 @@
 # Excel Config Compiler
 
-Unity 轻量导表：**Excel → 生成 C#（显式 Read/Write，无反射）+ `.bytes` 二进制**。
+Unity / .NET 轻量导表：按 **Client / Server / Shared** 分流，生成 C# + `.bytes`。
 
-Runtime 使用 `ref struct ByteReader`，数值路径 0 GC，IL2CPP / AOT 友好。
+- 客户端：可变 `struct` + `Dictionary`
+- 服务器：`readonly struct` + 可选 `FrozenDictionary`
+- Shared：两端代码各一份，**同一份 wire format bytes**（分别写入你配置的客户端/服务器 bytes 目录）
 
-## 安装
+## Excel 目录（强制）
 
-[OpenUPM](https://openupm.com/packages/com.setsuodu.excelconfigcompiler/)
+```text
+Excel/
+  Client/
+  Server/
+  Shared/
+```
+
+禁止把 xlsx 直接放在 Excel 根下。
+
+## Editor 配置（三者分开）
+
+| 配置 | 含义 |
+|------|------|
+| Excel 根目录 | 含 Client/Server/Shared |
+| 客户端命名空间 / 代码目录 / bytes 目录 | 只写客户端产物，**不再拼 `/client`** |
+| 服务器命名空间 / 代码目录 / bytes 目录 | 只写服务器产物；命名空间与客户端独立 |
+
+`tables.lock.json` 默认写在 Excel 根目录。
+
+## CLI
 
 ```bash
-openupm add com.setsuodu.excelconfigcompiler
+ExcelConfigCompiler ./Excel \
+  --client-code ./ClientGen --client-bytes ./ClientBytes \
+  --server-code ./ServerGen --server-bytes ./ServerBytes \
+  -n Game.Config --server-namespace Game.Server.Config
 ```
-
-或在 `Packages/manifest.json` 使用 git / OpenUPM scoped registry。
-
-**Editor 需要 EPPlus.dll**（勿打进玩家包）：
-
-1. 从 [NuGet EPPlus](https://www.nuget.org/packages/EPPlus) 下载 `.nupkg` 并解压  
-2. 取 `lib/netstandard2.1/EPPlus.dll`  
-3. 放到 `Assets/Plugins/Editor/` 或包内 `Editor/Plugins/`
-
-CLI 通过 NuGet 自动还原 EPPlus，无需手动拷 dll。
-
-## Excel 约定
-
-| 行 | 内容 |
-|----|------|
-| 1 | 字段名（PascalCase） |
-| 2 | 类型（`int` / `string` / `int[]` …） |
-| 3+ | 数据 |
-
-Worksheet 名 = 生成的 C# 类型名。首列名为 `Id` 且类型为 `int` 时，生成 `XxxTable.Get(id)`。
-
-## 使用
-
-1. 菜单 **Tools → Excel Config Compiler**，配置源目录 / 代码与二进制输出目录 / 命名空间后点「一键导表」  
-2. 运行时：
-
-```csharp
-ItemTable.LoadAndCache(Resources.Load<TextAsset>("Tables/Item").bytes);
-var row = ItemTable.Get(1001);
-```
-
-路径支持工程根相对（如 `Excel`，与 `Assets` 同级）、`Assets/...` 或绝对路径。
-
-## CLI（可选）
-
-```bash
-ExcelConfigCompiler <输入.xlsx|目录> <输出目录> -n Game.Config
-```
-
-预编译 exe 见仓库 [Releases](https://github.com/setsuodu/ExcelConfigCompiler/releases)。
 
 ## License
 

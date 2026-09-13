@@ -6,7 +6,8 @@ using System.Reflection;
 namespace ExcelConfigCompiler.Compiler
 {
     /// <summary>
-    /// 编译流水线统一入口。CLI 和 Unity Editor 都调用这里，避免两边逻辑分叉。
+    /// 编译流水线：按 Excel 根下 Client / Server / Shared 目录分流。
+    /// 客户端 / 服务器输出路径与命名空间完全独立，不再套一层 output/client。
     /// </summary>
     public static class CompilePipeline
     {
@@ -17,78 +18,301 @@ namespace ExcelConfigCompiler.Compiler
             public List<string> GeneratedCodeFiles = new List<string>();
             public List<string> GeneratedBinaryFiles = new List<string>();
             public List<string> Messages = new List<string>();
+            public string ManifestPath;
         }
 
-        /// <summary>
-        /// 编译一个或多个 xlsx（文件或目录）。
-        /// </summary>
+        public sealed class Options
+        {
+            /// <summary>Excel 根目录（其下 Client/Server/Shared）</summary>
+            public string ExcelRoot;
+
+            public string ClientCodeDir;
+            public string ClientBytesDir;
+            public string ClientNamespace = "Game.Config";
+
+            public string ServerCodeDir;
+            public string ServerBytesDir;
+            public string ServerNamespace = "Game.Server.Config";
+
+            public bool UseFrozenDictionary = true;
+
+            /// <summary>tables.lock.json 路径；空则写到 ExcelRoot/tables.lock.json</summary>
+            public string ManifestPath;
+        }
+
+        /// <summary>兼容旧调用：单一 outputDir 时仍分 client/server 子目录（CLI 旧参数）。</summary>
         public static Result Compile(string inputPath, string outputDir, string ns = "Config")
         {
+            var root = Path.GetFullPath(outputDir);
+            return Compile(new Options
+            {
+                ExcelRoot = inputPath,
+                ClientCodeDir = Path.Combine(root, "client", "Generated"),
+                ClientBytesDir = Path.Combine(root, "client", "Tables"),
+                ClientNamespace = ns ?? "Config",
+                ServerCodeDir = Path.Combine(root, "server", "Generated"),
+                ServerBytesDir = Path.Combine(root, "server", "Tables"),
+                ServerNamespace = ns ?? "Config",
+                UseFrozenDictionary = true,
+                ManifestPath = Path.Combine(root, "tables.lock.json"),
+            });
+        }
+
+        public static Result Compile(Options options)
+        {
+            if (options == null)
+                throw new ArgumentNullException(nameof(options));
+            if (string.IsNullOrWhiteSpace(options.ExcelRoot))
+                throw new CompileException("", null, null, null, null, "ExcelRoot 不能为空。");
+
             EnsureEpplusLicense();
 
             var result = new Result();
-            var codeDir = Path.Combine(outputDir, "Generated");
-            var dataDir = Path.Combine(outputDir, "Tables");
-            Directory.CreateDirectory(codeDir);
-            Directory.CreateDirectory(dataDir);
+            string inputPath = Path.GetFullPath(options.ExcelRoot);
 
-            var files = CollectXlsxFiles(inputPath);
+            string clientCode = string.IsNullOrWhiteSpace(options.ClientCodeDir) ? null : Path.GetFullPath(options.ClientCodeDir);
+            string clientBytes = string.IsNullOrWhiteSpace(options.ClientBytesDir) ? null : Path.GetFullPath(options.ClientBytesDir);
+            string serverCode = string.IsNullOrWhiteSpace(options.ServerCodeDir) ? null : Path.GetFullPath(options.ServerCodeDir);
+            string serverBytes = string.IsNullOrWhiteSpace(options.ServerBytesDir) ? null : Path.GetFullPath(options.ServerBytesDir);
+
+            string clientNs = string.IsNullOrWhiteSpace(options.ClientNamespace) ? "Game.Config" : options.ClientNamespace;
+            string serverNs = string.IsNullOrWhiteSpace(options.ServerNamespace) ? "Game.Server.Config" : options.ServerNamespace;
+
+            var files = CollectClassifiedXlsx(inputPath);
             if (files.Count == 0)
-                throw new CompileException(inputPath, null, null, null, null, "没有找到任何 .xlsx 文件。");
+                throw new CompileException(inputPath, null, null, null, null,
+                    "没有找到任何 .xlsx。请将表放入 Client/、Server/ 或 Shared/ 子目录。");
 
-            foreach (var xlsx in files)
+            var manifestEntries = new List<ManifestWriter.Entry>();
+
+            foreach (var item in files)
             {
-                var tables = ExcelParser.ParseWorkbook(xlsx);
+                var tables = ExcelParser.ParseWorkbook(item.FullPath);
                 foreach (var table in tables)
                 {
+                    table.Target = item.Target;
                     Validator.Validate(table);
 
-                    var code = CSharpGenerator.Generate(table, ns);
-                    var codePath = Path.Combine(codeDir, table.TableName + ".cs");
-                    File.WriteAllText(codePath, code);
-
                     var bytes = BinaryGenerator.Generate(table);
-                    var bytesPath = Path.Combine(dataDir, table.TableName + ".bytes");
-                    File.WriteAllBytes(bytesPath, bytes);
+                    string primaryBytesPath = null;
+
+                    switch (item.Target)
+                    {
+                        case TableTarget.Client:
+                            RequireDir(clientCode, "Client 表需要填写客户端代码目录");
+                            RequireDir(clientBytes, "Client 表需要填写客户端 bytes 目录");
+                            Directory.CreateDirectory(clientCode);
+                            Directory.CreateDirectory(clientBytes);
+                            WriteClientCode(table, clientNs, clientCode, result);
+                            primaryBytesPath = Path.Combine(clientBytes, table.TableName + ".bytes");
+                            File.WriteAllBytes(primaryBytesPath, bytes);
+                            result.GeneratedBinaryFiles.Add(primaryBytesPath);
+                            result.Messages.Add("[OK][Client] " + table.TableName + " → code/bytes 客户端");
+                            break;
+
+                        case TableTarget.Server:
+                            RequireDir(serverCode, "Server 表需要填写服务器代码目录");
+                            RequireDir(serverBytes, "Server 表需要填写服务器 bytes 目录");
+                            Directory.CreateDirectory(serverCode);
+                            Directory.CreateDirectory(serverBytes);
+                            WriteServerCode(table, serverNs, options.UseFrozenDictionary, serverCode, result);
+                            primaryBytesPath = Path.Combine(serverBytes, table.TableName + ".bytes");
+                            File.WriteAllBytes(primaryBytesPath, bytes);
+                            result.GeneratedBinaryFiles.Add(primaryBytesPath);
+                            result.Messages.Add("[OK][Server] " + table.TableName + " → code/bytes 服务器");
+                            break;
+
+                        case TableTarget.Shared:
+                        default:
+                            // Shared：两端各写一份代码；同一份 bytes 各写一份（不另建 shared 目录）
+                            if (string.IsNullOrEmpty(clientCode) && string.IsNullOrEmpty(serverCode))
+                                throw new CompileException(table.SourceFile, table.TableName, null, null, null,
+                                    "Shared 表至少需要客户端或服务器其中一端的代码输出目录。");
+                            if (!string.IsNullOrEmpty(clientCode))
+                            {
+                                RequireDir(clientBytes, "写出客户端代码时需同时填写客户端 bytes 目录");
+                                Directory.CreateDirectory(clientCode);
+                                Directory.CreateDirectory(clientBytes);
+                                WriteClientCode(table, clientNs, clientCode, result);
+                                var cb = Path.Combine(clientBytes, table.TableName + ".bytes");
+                                File.WriteAllBytes(cb, bytes);
+                                result.GeneratedBinaryFiles.Add(cb);
+                                primaryBytesPath = cb;
+                            }
+                            if (!string.IsNullOrEmpty(serverCode))
+                            {
+                                RequireDir(serverBytes, "写出服务器代码时需同时填写服务器 bytes 目录");
+                                Directory.CreateDirectory(serverCode);
+                                Directory.CreateDirectory(serverBytes);
+                                WriteServerCode(table, serverNs, options.UseFrozenDictionary, serverCode, result);
+                                var sb = Path.Combine(serverBytes, table.TableName + ".bytes");
+                                File.WriteAllBytes(sb, bytes);
+                                result.GeneratedBinaryFiles.Add(sb);
+                                if (primaryBytesPath == null) primaryBytesPath = sb;
+                            }
+                            result.Messages.Add("[OK][Shared] " + table.TableName + " → 已写到已配置的端（同一 wire format）");
+                            break;
+                    }
 
                     result.TableCount++;
                     result.TotalRows += table.Rows.Count;
-                    result.GeneratedCodeFiles.Add(codePath);
-                    result.GeneratedBinaryFiles.Add(bytesPath);
-                    result.Messages.Add("[OK] " + table.TableName + ": " + table.Rows.Count + " 行 → " +
-                        Path.GetFileName(codePath) + ", " + Path.GetFileName(bytesPath));
+
+                    manifestEntries.Add(new ManifestWriter.Entry
+                    {
+                        TableName = table.TableName,
+                        Target = item.Target.ToString(),
+                        RelativePath = item.RelativePath,
+                        ContentSha256 = primaryBytesPath != null ? ManifestWriter.Sha256File(primaryBytesPath) : "",
+                        RowCount = table.Rows.Count,
+                        FieldCount = table.Fields.Count,
+                    });
                 }
             }
+
+            string manifestPath = options.ManifestPath;
+            if (string.IsNullOrWhiteSpace(manifestPath))
+                manifestPath = Path.Combine(inputPath, "tables.lock.json");
+            else
+                manifestPath = Path.GetFullPath(manifestPath);
+
+            ManifestWriter.Write(manifestPath, manifestEntries);
+            result.ManifestPath = manifestPath;
+            result.Messages.Add("[OK] manifest → " + manifestPath);
 
             return result;
         }
 
-        private static List<string> CollectXlsxFiles(string inputPath)
+        private static void RequireDir(string dir, string message)
         {
-            var list = new List<string>();
+            if (string.IsNullOrWhiteSpace(dir))
+                throw new CompileException("", null, null, null, null, message);
+        }
+
+        private static void WriteClientCode(TableDef table, string ns, string codeDir, Result result)
+        {
+            var code = CSharpGenerator.Generate(table, ns);
+            var codePath = Path.Combine(codeDir, table.TableName + ".cs");
+            File.WriteAllText(codePath, code);
+            result.GeneratedCodeFiles.Add(codePath);
+        }
+
+        private static void WriteServerCode(TableDef table, string ns, bool useFrozen, string codeDir, Result result)
+        {
+            var code = ServerCSharpGenerator.Generate(table, ns, useFrozen);
+            var codePath = Path.Combine(codeDir, table.TableName + ".cs");
+            File.WriteAllText(codePath, code);
+            result.GeneratedCodeFiles.Add(codePath);
+        }
+
+        private sealed class ClassifiedFile
+        {
+            public string FullPath;
+            public string RelativePath;
+            public TableTarget Target;
+        }
+
+        private static List<ClassifiedFile> CollectClassifiedXlsx(string inputPath)
+        {
+            var list = new List<ClassifiedFile>();
+
             if (File.Exists(inputPath) && inputPath.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
             {
-                list.Add(Path.GetFullPath(inputPath));
+                if (Path.GetFileName(inputPath).StartsWith("~$")) return list;
+                if (!TryResolveTargetFromPath(inputPath, out var target, out var rel))
+                    throw new CompileException(inputPath, null, null, null, null,
+                        "单文件必须位于名为 Client、Server 或 Shared 的目录下。");
+                list.Add(new ClassifiedFile { FullPath = Path.GetFullPath(inputPath), RelativePath = rel, Target = target });
                 return list;
             }
 
-            if (Directory.Exists(inputPath))
+            if (!Directory.Exists(inputPath))
+                throw new CompileException(inputPath, null, null, null, null, "输入路径不存在。");
+
+            string root = Path.GetFullPath(inputPath);
+            foreach (var f in Directory.GetFiles(root, "*.xlsx", SearchOption.AllDirectories))
             {
-                foreach (var f in Directory.GetFiles(inputPath, "*.xlsx", SearchOption.AllDirectories))
+                if (Path.GetFileName(f).StartsWith("~$")) continue;
+                var full = Path.GetFullPath(f);
+                if (!TryResolveTargetFromPath(full, root, out var target, out var rel))
                 {
-                    if (Path.GetFileName(f).StartsWith("~$")) continue;
-                    list.Add(Path.GetFullPath(f));
+                    throw new CompileException(full, null, null, null, null,
+                        "xlsx 必须放在 Client/、Server/ 或 Shared/ 子目录中，禁止放在 Excel 根目录。");
                 }
+                list.Add(new ClassifiedFile { FullPath = full, RelativePath = rel, Target = target });
             }
 
             return list;
         }
 
-        /// <summary>
-        /// 用反射设置 EPPlus 授权，兼容 5/6/7/8 不同 API，避免编译期绑定到某个版本的成员。
-        /// EPPlus 5~7: ExcelPackage.LicenseContext = LicenseContext.NonCommercial
-        /// EPPlus 8+:   ExcelPackage.License.SetNonCommercialPersonal(...)
-        /// </summary>
+        private static bool TryResolveTargetFromPath(string fullFilePath, out TableTarget target, out string relativePath)
+        {
+            var dir = Path.GetDirectoryName(fullFilePath);
+            relativePath = Path.GetFileName(fullFilePath);
+            while (!string.IsNullOrEmpty(dir))
+            {
+                var name = Path.GetFileName(dir);
+                if (TryParseTargetFolder(name, out target))
+                {
+                    relativePath = Path.Combine(name, relativePath);
+                    return true;
+                }
+                relativePath = Path.Combine(name, relativePath);
+                var parent = Path.GetDirectoryName(dir);
+                if (parent == dir) break;
+                dir = parent;
+            }
+            target = TableTarget.Shared;
+            return false;
+        }
+
+        private static bool TryResolveTargetFromPath(string fullFilePath, string root, out TableTarget target, out string relativePath)
+        {
+            relativePath = fullFilePath;
+            if (fullFilePath.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+                relativePath = fullFilePath.Substring(root.Length).TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+
+            var parts = relativePath.Split(new[] { '/', '\\' }, StringSplitOptions.RemoveEmptyEntries);
+            foreach (var p in parts)
+            {
+                if (TryParseTargetFolder(p, out target))
+                    return true;
+            }
+
+            var rootName = Path.GetFileName(root.TrimEnd('/', '\\'));
+            if (TryParseTargetFolder(rootName, out target))
+            {
+                relativePath = Path.Combine(rootName, relativePath);
+                return true;
+            }
+
+            target = TableTarget.Shared;
+            return false;
+        }
+
+        private static bool TryParseTargetFolder(string name, out TableTarget target)
+        {
+            if (string.Equals(name, "Client", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(name, "c", StringComparison.OrdinalIgnoreCase))
+            {
+                target = TableTarget.Client;
+                return true;
+            }
+            if (string.Equals(name, "Server", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(name, "s", StringComparison.OrdinalIgnoreCase))
+            {
+                target = TableTarget.Server;
+                return true;
+            }
+            if (string.Equals(name, "Shared", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(name, "Common", StringComparison.OrdinalIgnoreCase))
+            {
+                target = TableTarget.Shared;
+                return true;
+            }
+            target = TableTarget.Shared;
+            return false;
+        }
+
         private static void EnsureEpplusLicense()
         {
             try
@@ -96,7 +320,6 @@ namespace ExcelConfigCompiler.Compiler
                 var packageType = Type.GetType("OfficeOpenXml.ExcelPackage, EPPlus")
                     ?? typeof(OfficeOpenXml.ExcelPackage);
 
-                // 方式1：LicenseContext（EPPlus 5 / 6 / 部分 7）
                 var licenseContextProp = packageType.GetProperty("LicenseContext",
                     BindingFlags.Public | BindingFlags.Static);
                 if (licenseContextProp != null && licenseContextProp.CanWrite)
@@ -107,7 +330,6 @@ namespace ExcelConfigCompiler.Compiler
                     return;
                 }
 
-                // 方式2：License.SetNonCommercialPersonal（EPPlus 8+）
                 var licenseProp = packageType.GetProperty("License",
                     BindingFlags.Public | BindingFlags.Static);
                 if (licenseProp != null)
