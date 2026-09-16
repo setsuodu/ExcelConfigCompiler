@@ -1,5 +1,4 @@
 ﻿<Solution>
   <Project Path="ExcelConfigCompiler.Editor.csproj" />
-  <Project Path="Assembly-CSharp.csproj" />
   <Project Path="ExcelConfigCompiler.Runtime.csproj" />
 </Solution>

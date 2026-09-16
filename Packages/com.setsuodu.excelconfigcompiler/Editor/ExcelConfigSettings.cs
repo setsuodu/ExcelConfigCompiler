@@ -3,47 +3,45 @@ using UnityEngine;
 namespace ExcelConfigCompiler.Editor
 {
     /// <summary>
-    /// 导表路径：Excel 根、客户端输出、服务器输出三者分开，不套 OutputRoot/client。
+    /// 单一 Excel 输入；Client / Server / Dashboard 三套输出互不干扰。
+    /// 所有输出路径默认空：不填 = 不生成该产物。
     /// </summary>
     public class ExcelConfigSettings : ScriptableObject
     {
-        [Header("1. Excel 输入")]
-        [Tooltip("Excel 根目录（其下必须有 Client / Server / Shared）")]
+        [Header("输入（唯一）")]
+        [Tooltip("Excel 根目录（其下 Client / Server / Shared）")]
         public string ExcelSourceFolder = "Excel";
 
-        [Header("2. 客户端输出")]
-        [Tooltip("客户端生成代码命名空间")]
+        [Header("客户端输出（全空 = 不生成客户端任何东西）")]
         public string ClientNamespace = "Game.Config";
+        [Tooltip("生成 .cs；空 = 不生成代码")]
+        public string ClientCodeFolder = "";
+        [Tooltip("导出 .bytes")]
+        public bool ClientExportBytes = false;
+        public string ClientBytesFolder = "";
+        [Tooltip("导出 .json（AOT）")]
+        public bool ClientExportJson = false;
+        public string ClientJsonFolder = "";
 
-        [Tooltip("客户端 .cs 输出目录（直接写入此目录，不再拼 /client）")]
-        public string ClientCodeFolder = "Assets/Config/Generated";
-
-        [Tooltip("客户端 .bytes 输出目录")]
-        public string ClientBytesFolder = "Assets/Config/Tables";
-
-        [Header("3. 服务器输出")]
-        [Tooltip("服务器生成代码命名空间（通常与客户端不同）")]
+        [Header("服务器输出")]
         public string ServerNamespace = "Game.Server.Config";
-
-        [Tooltip("服务器 .cs 输出目录")]
         public string ServerCodeFolder = "";
-
-        [Tooltip("服务器 .bytes 输出目录")]
+        public bool ServerExportBytes = false;
         public string ServerBytesFolder = "";
-
-        [Header("4. 服务器模板")]
-        [Tooltip("使用 FrozenDictionary（需 net8+）；关闭则用 Dictionary")]
-        public bool UseFrozenDictionary = true;
-
-        [Header("5. JSON 导出（可选，AOT 零反射）")]
-        [Tooltip("额外导出 JSON，供开发期/热更可读；正式包仍用 .bytes")]
-        public bool ExportJson = false;
-
-        [Tooltip("客户端 .json 输出目录；为空且开启 ExportJson 时默认写到 ClientBytesFolder 旁的 Json 目录逻辑由你指定路径")]
-        public string ClientJsonFolder = "Assets/Config/Json";
-
-        [Tooltip("服务器 .json 输出目录")]
+        public bool ServerExportJson = false;
         public string ServerJsonFolder = "";
+        [Tooltip("仅 net8+ 服务器；Unity 请关")]
+        public bool UseFrozenDictionary = false;
+
+        [Header("Dashboard 输出（可选第三端）")]
+        public string DashboardNamespace = "Game.Dashboard.Config";
+        public string DashboardCodeFolder = "";
+        public bool DashboardExportBytes = false;
+        public string DashboardBytesFolder = "";
+        public bool DashboardExportJson = false;
+        public string DashboardJsonFolder = "";
+        [Tooltip("Dashboard 是否用服务器风格 readonly")]
+        public bool DashboardUseServerStyle = true;
 
         public const string DefaultAssetPath = "Assets/ExcelConfigCompilerSettings.asset";
     }

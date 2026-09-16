@@ -8,11 +8,13 @@
   - Compiler: `JsonGenerator`（TableDef → JSON 数组）
   - 生成代码：`struct.ReadJson` / `Table.LoadJson` / `LoadJsonFromFile` / `LoadJsonAndCache`
   - `CompilePipeline.Options.ExportJson` + `ClientJsonDir` / `ServerJsonDir`
+  - **Editor 窗口**：勾选「导出 JSON」+ 客户端/服务器 JSON 目录；`ExcelConfigSettings` 持久化
 - 与 binary 共用 Schema；JSON 字段名 = CSharpName；未知字段 `SkipValue` 向前兼容
 
 ### Notes
 - 正式包仍推荐 `.bytes`；JSON 面向开发期与热更可读场景
 - 不依赖 System.Text.Json / Newtonsoft / JsonUtility，IL2CPP/AOT 安全
+- `JsonReader` 使用 `NumberStyles` + `CultureInfo`，兼容 Unity BCL
 
 ## [1.1.0] - 2026-09-13
 

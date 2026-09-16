@@ -12,14 +12,24 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0c37923d49f496d449c561f8eec900a0, type: 3}
   m_Name: ExcelConfigCompilerSettings
   m_EditorClassIdentifier: ExcelConfigCompiler.Editor::ExcelConfigCompiler.Editor.ExcelConfigSettings
-  ExcelSourceFolder: Assets/Config/Excel/Client
+  ExcelSourceFolder: Assets/Config/Excel/Shared
   ClientNamespace: Game.Config
-  ClientCodeFolder: Assets/Config/Generated
-  ClientBytesFolder: Assets/Config/Tables
+  ClientCodeFolder: Assets/Config/Client
+  ClientExportBytes: 1
+  ClientBytesFolder: Assets/Config/Json/Client
+  ClientExportJson: 1
+  ClientJsonFolder: Assets/Config/Json/Client
   ServerNamespace: Game.Server.Config
-  ServerCodeFolder: 
-  ServerBytesFolder: 
+  ServerCodeFolder: Assets/Config/Server
+  ServerExportBytes: 1
+  ServerBytesFolder: Assets/Config/Json/Server
+  ServerExportJson: 1
+  ServerJsonFolder: Assets/Config/Json/Server
   UseFrozenDictionary: 1
-  ExportJson: 1
-  ClientJsonFolder: Assets/Config/Json
-  ServerJsonFolder: 
+  DashboardNamespace: Game.Dashboard.Config
+  DashboardCodeFolder: 
+  DashboardExportBytes: 0
+  DashboardBytesFolder: 
+  DashboardExportJson: 0
+  DashboardJsonFolder: 
+  DashboardUseServerStyle: 1

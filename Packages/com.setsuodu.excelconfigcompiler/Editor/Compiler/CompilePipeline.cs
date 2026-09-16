@@ -112,60 +112,100 @@ namespace ExcelConfigCompiler.Compiler
                     switch (item.Target)
                     {
                         case TableTarget.Client:
-                            RequireDir(clientCode, "Client 表需要填写客户端代码目录");
-                            RequireDir(clientBytes, "Client 表需要填写客户端 bytes 目录");
-                            Directory.CreateDirectory(clientCode);
-                            Directory.CreateDirectory(clientBytes);
-                            WriteClientCode(table, clientNs, clientCode, result);
-                            primaryBytesPath = Path.Combine(clientBytes, table.TableName + ".bytes");
-                            File.WriteAllBytes(primaryBytesPath, bytes);
-                            result.GeneratedBinaryFiles.Add(primaryBytesPath);
-                            result.Messages.Add("[OK][Client] " + table.TableName + " → code/bytes 客户端");
+                            if (string.IsNullOrEmpty(clientCode) && string.IsNullOrEmpty(clientBytes)
+                                && !(options.ExportJson && !string.IsNullOrEmpty(clientJson)))
+                                throw new CompileException(table.SourceFile, table.TableName, null, null, null,
+                                    "Client 表请至少填写：客户端代码目录、bytes 目录或客户端 JSON 目录之一。");
+                            if (!string.IsNullOrEmpty(clientCode))
+                            {
+                                Directory.CreateDirectory(clientCode);
+                                WriteClientCode(table, clientNs, clientCode, result);
+                                result.Messages.Add("[OK][Client] " + table.TableName + " → code");
+                            }
+                            if (!string.IsNullOrEmpty(clientBytes))
+                            {
+                                Directory.CreateDirectory(clientBytes);
+                                primaryBytesPath = Path.Combine(clientBytes, table.TableName + ".bytes");
+                                File.WriteAllBytes(primaryBytesPath, bytes);
+                                result.GeneratedBinaryFiles.Add(primaryBytesPath);
+                                result.Messages.Add("[OK][Client] " + table.TableName + " → bytes");
+                            }
                             MaybeWriteJson(table, options.ExportJson, clientJson, result, "Client");
+                            if (options.ExportJson && string.IsNullOrEmpty(clientJson) && !string.IsNullOrEmpty(serverJson))
+                                result.Messages.Add("[提示] Client 表 " + table.TableName + " 不会写入「服务器 JSON 目录」；请填「客户端 JSON 目录」或把表放到 Shared/Server");
                             break;
 
                         case TableTarget.Server:
-                            RequireDir(serverCode, "Server 表需要填写服务器代码目录");
-                            RequireDir(serverBytes, "Server 表需要填写服务器 bytes 目录");
-                            Directory.CreateDirectory(serverCode);
-                            Directory.CreateDirectory(serverBytes);
-                            WriteServerCode(table, serverNs, options.UseFrozenDictionary, serverCode, result);
-                            primaryBytesPath = Path.Combine(serverBytes, table.TableName + ".bytes");
-                            File.WriteAllBytes(primaryBytesPath, bytes);
-                            result.GeneratedBinaryFiles.Add(primaryBytesPath);
-                            result.Messages.Add("[OK][Server] " + table.TableName + " → code/bytes 服务器");
+                            if (string.IsNullOrEmpty(serverCode) && string.IsNullOrEmpty(serverBytes)
+                                && !(options.ExportJson && !string.IsNullOrEmpty(serverJson)))
+                                throw new CompileException(table.SourceFile, table.TableName, null, null, null,
+                                    "Server 表请至少填写：服务器代码目录、bytes 目录或服务器 JSON 目录之一。");
+                            if (!string.IsNullOrEmpty(serverCode))
+                            {
+                                Directory.CreateDirectory(serverCode);
+                                WriteServerCode(table, serverNs, options.UseFrozenDictionary, serverCode, result);
+                                result.Messages.Add("[OK][Server] " + table.TableName + " → code");
+                            }
+                            if (!string.IsNullOrEmpty(serverBytes))
+                            {
+                                Directory.CreateDirectory(serverBytes);
+                                primaryBytesPath = Path.Combine(serverBytes, table.TableName + ".bytes");
+                                File.WriteAllBytes(primaryBytesPath, bytes);
+                                result.GeneratedBinaryFiles.Add(primaryBytesPath);
+                                result.Messages.Add("[OK][Server] " + table.TableName + " → bytes");
+                            }
                             MaybeWriteJson(table, options.ExportJson, serverJson, result, "Server");
+                            if (options.ExportJson && string.IsNullOrEmpty(serverJson) && !string.IsNullOrEmpty(clientJson))
+                                result.Messages.Add("[提示] Server 表 " + table.TableName + " 不会写入「客户端 JSON 目录」；请填「服务器 JSON 目录」");
                             break;
 
                         case TableTarget.Shared:
                         default:
                             // Shared：两端各写一份代码；同一份 bytes 各写一份（不另建 shared 目录）
-                            if (string.IsNullOrEmpty(clientCode) && string.IsNullOrEmpty(serverCode))
+                            // JSON 与代码目录解耦：只要配置了对应 JsonDir 且 ExportJson，就会写出
+                            if (string.IsNullOrEmpty(clientCode) && string.IsNullOrEmpty(serverCode)
+                                && !(options.ExportJson && (!string.IsNullOrEmpty(clientJson) || !string.IsNullOrEmpty(serverJson))))
                                 throw new CompileException(table.SourceFile, table.TableName, null, null, null,
-                                    "Shared 表至少需要客户端或服务器其中一端的代码输出目录。");
+                                    "Shared 表至少需要客户端/服务器代码目录，或开启 ExportJson 并填写 JSON 目录。");
                             if (!string.IsNullOrEmpty(clientCode))
                             {
-                                RequireDir(clientBytes, "写出客户端代码时需同时填写客户端 bytes 目录");
                                 Directory.CreateDirectory(clientCode);
-                                Directory.CreateDirectory(clientBytes);
                                 WriteClientCode(table, clientNs, clientCode, result);
+                                result.Messages.Add("[OK][Shared/Client] " + table.TableName + " → code");
+                            }
+                            if (!string.IsNullOrEmpty(clientBytes))
+                            {
+                                Directory.CreateDirectory(clientBytes);
                                 var cb = Path.Combine(clientBytes, table.TableName + ".bytes");
                                 File.WriteAllBytes(cb, bytes);
                                 result.GeneratedBinaryFiles.Add(cb);
                                 primaryBytesPath = cb;
-                                MaybeWriteJson(table, options.ExportJson, clientJson, result, "Client");
+                                result.Messages.Add("[OK][Shared/Client] " + table.TableName + " → bytes");
                             }
                             if (!string.IsNullOrEmpty(serverCode))
                             {
-                                RequireDir(serverBytes, "写出服务器代码时需同时填写服务器 bytes 目录");
                                 Directory.CreateDirectory(serverCode);
-                                Directory.CreateDirectory(serverBytes);
                                 WriteServerCode(table, serverNs, options.UseFrozenDictionary, serverCode, result);
+                                result.Messages.Add("[OK][Shared/Server] " + table.TableName + " → code");
+                            }
+                            if (!string.IsNullOrEmpty(serverBytes))
+                            {
+                                Directory.CreateDirectory(serverBytes);
                                 var sb = Path.Combine(serverBytes, table.TableName + ".bytes");
                                 File.WriteAllBytes(sb, bytes);
                                 result.GeneratedBinaryFiles.Add(sb);
                                 if (primaryBytesPath == null) primaryBytesPath = sb;
-                                MaybeWriteJson(table, options.ExportJson, serverJson, result, "Server");
+                                result.Messages.Add("[OK][Shared/Server] " + table.TableName + " → bytes");
+                            }
+                            // JSON：按目录分别写，不依赖是否生成了该端代码
+                            if (options.ExportJson)
+                            {
+                                if (!string.IsNullOrEmpty(clientJson))
+                                    MaybeWriteJson(table, true, clientJson, result, "Client");
+                                if (!string.IsNullOrEmpty(serverJson))
+                                    MaybeWriteJson(table, true, serverJson, result, "Server");
+                                if (string.IsNullOrEmpty(clientJson) && string.IsNullOrEmpty(serverJson))
+                                    result.Messages.Add("[跳过][Shared] " + table.TableName + " → ExportJson 已开但未配置任何 JSON 目录");
                             }
                             result.Messages.Add("[OK][Shared] " + table.TableName + " → 已写到已配置的端（同一 wire format）");
                             break;
@@ -202,13 +242,18 @@ namespace ExcelConfigCompiler.Compiler
 
         private static void MaybeWriteJson(TableDef table, bool exportJson, string jsonDir, Result result, string tag)
         {
-            if (!exportJson || string.IsNullOrEmpty(jsonDir)) return;
+            if (!exportJson) return;
+            if (string.IsNullOrEmpty(jsonDir))
+            {
+                result.Messages.Add("[跳过][" + tag + "] " + table.TableName + " → 未配置 " + tag + " JSON 目录，跳过 json");
+                return;
+            }
             Directory.CreateDirectory(jsonDir);
             var json = JsonGenerator.Generate(table);
             var path = Path.Combine(jsonDir, table.TableName + ".json");
             File.WriteAllText(path, json, System.Text.Encoding.UTF8);
             result.GeneratedJsonFiles.Add(path);
-            result.Messages.Add("[OK][" + tag + "] " + table.TableName + " → json");
+            result.Messages.Add("[OK][" + tag + "] " + table.TableName + " → json  " + path);
         }
 
         private static void RequireDir(string dir, string message)

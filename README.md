@@ -25,7 +25,10 @@ Excel/
 | Excel 根目录 | 含 Client/Server/Shared |
 | 客户端命名空间 / 代码目录 / bytes 目录 | 只写客户端产物，**不再拼 `/client`** |
 | 服务器命名空间 / 代码目录 / bytes 目录 | 只写服务器产物；命名空间与客户端独立 |
-| ExportJson + Client/Server Json 目录 | 可选；开发期/热更可读 JSON，正式包仍用 `.bytes` |
+| **导出 JSON** | 勾选后额外写出 `.json`（AOT 零反射） |
+| 客户端 / 服务器 JSON 目录 | 与 bytes 目录分开配置 |
+
+在 **Tools → Excel Config Compiler** 中勾选「导出 JSON」并指定目录后，一键导表即可。
 
 `tables.lock.json` 默认写在 Excel 根目录。
 
