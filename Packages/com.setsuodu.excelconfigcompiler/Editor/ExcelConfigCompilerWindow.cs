@@ -17,7 +17,7 @@ namespace ExcelConfigCompiler.Editor
         public static void Open()
         {
             var win = GetWindow<ExcelConfigCompilerWindow>("Excel Config Compiler");
-            win.minSize = new Vector2(520, 440);
+            win.minSize = new Vector2(520, 520);
             win.Show();
         }
 
@@ -52,7 +52,8 @@ namespace ExcelConfigCompiler.Editor
             EditorGUILayout.HelpBox(
                 "Excel 根下分 Client / Server / Shared。\n" +
                 "客户端、服务器输出目录各自填写，只写一份，不会再拼 /client。\n" +
-                "两端命名空间独立。",
+                "两端命名空间独立。\n" +
+                "可选导出 JSON（AOT 零反射 ReadJson/LoadJson），正式包仍用 .bytes。",
                 MessageType.Info);
 
             EditorGUI.BeginChangeCheck();
@@ -72,6 +73,15 @@ namespace ExcelConfigCompiler.Editor
             _settings.ServerCodeFolder = FolderField("服务器代码目录", _settings.ServerCodeFolder);
             _settings.ServerBytesFolder = FolderField("服务器 bytes 目录", _settings.ServerBytesFolder);
             _settings.UseFrozenDictionary = EditorGUILayout.Toggle("服务器 FrozenDictionary", _settings.UseFrozenDictionary);
+
+            EditorGUILayout.Space(4);
+            EditorGUILayout.LabelField("JSON 导出（可选）", EditorStyles.boldLabel);
+            _settings.ExportJson = EditorGUILayout.Toggle("导出 JSON", _settings.ExportJson);
+            using (new EditorGUI.DisabledScope(!_settings.ExportJson))
+            {
+                _settings.ClientJsonFolder = FolderField("客户端 JSON 目录", _settings.ClientJsonFolder);
+                _settings.ServerJsonFolder = FolderField("服务器 JSON 目录", _settings.ServerJsonFolder);
+            }
 
             if (EditorGUI.EndChangeCheck())
                 EditorUtility.SetDirty(_settings);
@@ -122,7 +132,17 @@ namespace ExcelConfigCompiler.Editor
                     return;
                 }
 
-                // 只写用户填的目录，不再走临时目录 / 二次拷贝 / OutputRoot
+                if (_settings.ExportJson)
+                {
+                    bool hasClientJson = !string.IsNullOrWhiteSpace(_settings.ClientJsonFolder);
+                    bool hasServerJson = !string.IsNullOrWhiteSpace(_settings.ServerJsonFolder);
+                    if (!hasClientJson && !hasServerJson)
+                    {
+                        _lastLog += "[错误] 已勾选导出 JSON，请至少填写客户端或服务器 JSON 目录。\n";
+                        return;
+                    }
+                }
+
                 var result = CompilePipeline.Compile(new CompilePipeline.Options
                 {
                     ExcelRoot = excelDir,
@@ -133,6 +153,11 @@ namespace ExcelConfigCompiler.Editor
                     ServerBytesDir = string.IsNullOrWhiteSpace(_settings.ServerBytesFolder) ? null : ResolvePath(_settings.ServerBytesFolder),
                     ServerNamespace = _settings.ServerNamespace,
                     UseFrozenDictionary = _settings.UseFrozenDictionary,
+                    ExportJson = _settings.ExportJson,
+                    ClientJsonDir = _settings.ExportJson && !string.IsNullOrWhiteSpace(_settings.ClientJsonFolder)
+                        ? ResolvePath(_settings.ClientJsonFolder) : null,
+                    ServerJsonDir = _settings.ExportJson && !string.IsNullOrWhiteSpace(_settings.ServerJsonFolder)
+                        ? ResolvePath(_settings.ServerJsonFolder) : null,
                     ManifestPath = Path.Combine(excelDir, "tables.lock.json"),
                 });
 
@@ -144,6 +169,15 @@ namespace ExcelConfigCompiler.Editor
                     _lastLog += "客户端代码 → " + ResolvePath(_settings.ClientCodeFolder) + "\n";
                 if (!string.IsNullOrEmpty(_settings.ServerCodeFolder))
                     _lastLog += "服务器代码 → " + ResolvePath(_settings.ServerCodeFolder) + "\n";
+                if (_settings.ExportJson)
+                {
+                    if (!string.IsNullOrWhiteSpace(_settings.ClientJsonFolder))
+                        _lastLog += "客户端 JSON → " + ResolvePath(_settings.ClientJsonFolder) + "\n";
+                    if (!string.IsNullOrWhiteSpace(_settings.ServerJsonFolder))
+                        _lastLog += "服务器 JSON → " + ResolvePath(_settings.ServerJsonFolder) + "\n";
+                    if (result.GeneratedJsonFiles != null && result.GeneratedJsonFiles.Count > 0)
+                        _lastLog += $"JSON 文件数 → {result.GeneratedJsonFiles.Count}\n";
+                }
 
                 AssetDatabase.Refresh();
                 Debug.Log($"[ExcelConfigCompiler] 导表成功：{result.TableCount} 表 / {result.TotalRows} 行");

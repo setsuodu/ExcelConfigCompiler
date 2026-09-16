@@ -49,7 +49,53 @@ namespace ExcelConfigCompiler.Compiler
                 sb.AppendLine($"            {f.CSharpName} = reader.{ReadMethod(f.Type)}();");
             sb.AppendLine("        }");
 
-            // 可选：与客户端对称的 Write，便于调试/二次导出
+            // JSON：readonly 不能直接赋值字段，用临时可变再拷贝
+            sb.AppendLine();
+            sb.AppendLine($"        public static {table.TableName} ReadJson(ref JsonReader reader)");
+            sb.AppendLine("        {");
+            foreach (var f in table.Fields)
+                sb.AppendLine($"            {CSharpType(f.Type)} __{f.CSharpName} = default;");
+            sb.AppendLine("            reader.Expect('{');");
+            sb.AppendLine("            if (!reader.TryExpect('}'))");
+            sb.AppendLine("            {");
+            sb.AppendLine("                while (true)");
+            sb.AppendLine("                {");
+            sb.AppendLine("                    string name = reader.ReadPropertyName();");
+            sb.AppendLine("                    switch (name)");
+            sb.AppendLine("                    {");
+            foreach (var f in table.Fields)
+                sb.AppendLine($"                        case \"{f.CSharpName}\": __{f.CSharpName} = reader.{ReadMethod(f.Type)}(); break;");
+            sb.AppendLine("                        default: reader.SkipValue(); break;");
+            sb.AppendLine("                    }");
+            sb.AppendLine("                    if (reader.TryExpect('}')) break;");
+            sb.AppendLine("                    reader.Expect(',');");
+            sb.AppendLine("                }");
+            sb.AppendLine("            }");
+            sb.AppendLine($"            return new {table.TableName}(");
+            for (int i = 0; i < table.Fields.Count; i++)
+            {
+                var f = table.Fields[i];
+                string comma = i < table.Fields.Count - 1 ? "," : "";
+                sb.AppendLine($"                __{f.CSharpName}{comma}");
+            }
+            sb.AppendLine("            );");
+            sb.AppendLine("        }");
+
+            // 私有构造：供 ReadJson 使用
+            sb.AppendLine();
+            sb.Append($"        private {table.TableName}(");
+            for (int i = 0; i < table.Fields.Count; i++)
+            {
+                var f = table.Fields[i];
+                if (i > 0) sb.Append(", ");
+                sb.Append($"{CSharpType(f.Type)} {f.CSharpName}");
+            }
+            sb.AppendLine(")");
+            sb.AppendLine("        {");
+            foreach (var f in table.Fields)
+                sb.AppendLine($"            this.{f.CSharpName} = {f.CSharpName};");
+            sb.AppendLine("        }");
+
             sb.AppendLine();
             sb.AppendLine("        public void Write(ByteWriter writer)");
             sb.AppendLine("        {");
@@ -84,6 +130,26 @@ namespace ExcelConfigCompiler.Compiler
             sb.AppendLine("            return result;");
             sb.AppendLine("        }");
 
+            sb.AppendLine();
+            sb.AppendLine($"        public static {table.TableName}[] LoadJson(string json)");
+            sb.AppendLine("        {");
+            sb.AppendLine("            var reader = new JsonReader(json);");
+            sb.AppendLine("            reader.Expect('[');");
+            sb.AppendLine("            if (reader.TryExpect(']')) return Array.Empty<" + table.TableName + ">();");
+            sb.AppendLine($"            var list = new List<{table.TableName}>(64);");
+            sb.AppendLine("            while (true)");
+            sb.AppendLine("            {");
+            sb.AppendLine($"                list.Add({table.TableName}.ReadJson(ref reader));");
+            sb.AppendLine("                if (reader.TryExpect(']')) break;");
+            sb.AppendLine("                reader.Expect(',');");
+            sb.AppendLine("            }");
+            sb.AppendLine("            return list.ToArray();");
+            sb.AppendLine("        }");
+
+            sb.AppendLine();
+            sb.AppendLine($"        public static {table.TableName}[] LoadJsonFromFile(string path)");
+            sb.AppendLine("            => LoadJson(File.ReadAllText(path));");
+
             if (canIndex)
             {
                 sb.AppendLine();
@@ -109,7 +175,26 @@ namespace ExcelConfigCompiler.Compiler
                 sb.AppendLine("            return _cache;");
                 sb.AppendLine("        }");
                 sb.AppendLine();
-                sb.AppendLine("        /// <summary>查询阶段不产生 GC（返回值拷贝）。需先 LoadAndCache。</summary>");
+                sb.AppendLine($"        public static {table.TableName}[] LoadJsonAndCache(string json)");
+                sb.AppendLine("        {");
+                sb.AppendLine("            _cache = LoadJson(json);");
+                if (useFrozenDictionary)
+                {
+                    sb.AppendLine("            var builder = new Dictionary<int, int>(_cache.Length);");
+                    sb.AppendLine("            for (int i = 0; i < _cache.Length; i++)");
+                    sb.AppendLine($"                builder[_cache[i].{idField.CSharpName}] = i;");
+                    sb.AppendLine("            _indexById = builder.ToFrozenDictionary();");
+                }
+                else
+                {
+                    sb.AppendLine("            _indexById = new Dictionary<int, int>(_cache.Length);");
+                    sb.AppendLine("            for (int i = 0; i < _cache.Length; i++)");
+                    sb.AppendLine($"                _indexById[_cache[i].{idField.CSharpName}] = i;");
+                }
+                sb.AppendLine("            return _cache;");
+                sb.AppendLine("        }");
+                sb.AppendLine();
+                sb.AppendLine("        /// <summary>查询阶段不产生 GC（返回值拷贝）。需先 LoadAndCache / LoadJsonAndCache。</summary>");
                 sb.AppendLine($"        public static {table.TableName} Get(int id)");
                 sb.AppendLine("        {");
                 sb.AppendLine("            if (_cache == null || _indexById == null)");

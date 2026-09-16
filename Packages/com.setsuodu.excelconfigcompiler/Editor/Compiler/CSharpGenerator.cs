@@ -54,13 +54,32 @@ namespace ExcelConfigCompiler.Compiler
                 sb.AppendLine($"            {f.CSharpName} = reader.{ReadMethod(f.Type)}();");
             sb.AppendLine("        }");
 
+            // AOT JSON：零反射，字段名硬编码 switch
+            sb.AppendLine();
+            sb.AppendLine("        public void ReadJson(ref JsonReader reader)");
+            sb.AppendLine("        {");
+            sb.AppendLine("            reader.Expect('{');");
+            sb.AppendLine("            if (reader.TryExpect('}')) return;");
+            sb.AppendLine("            while (true)");
+            sb.AppendLine("            {");
+            sb.AppendLine("                string name = reader.ReadPropertyName();");
+            sb.AppendLine("                switch (name)");
+            sb.AppendLine("                {");
+            foreach (var f in table.Fields)
+                sb.AppendLine($"                    case \"{f.CSharpName}\": {f.CSharpName} = reader.{ReadMethod(f.Type)}(); break;");
+            sb.AppendLine("                    default: reader.SkipValue(); break;");
+            sb.AppendLine("                }");
+            sb.AppendLine("                if (reader.TryExpect('}')) break;");
+            sb.AppendLine("                reader.Expect(',');");
+            sb.AppendLine("            }");
+            sb.AppendLine("        }");
+
             sb.AppendLine("    }");
         }
 
         private static void AppendTableClass(StringBuilder sb, TableDef table)
         {
             var idField = table.IdField;
-            // 目前索引只对 Int32 主键做强类型 Get(int)，其它整数类型可后续扩展
             bool canIndex = idField != null && idField.Type == FieldType.Int32;
 
             sb.AppendLine($"    public static class {table.TableName}Table");
@@ -81,6 +100,29 @@ namespace ExcelConfigCompiler.Compiler
             sb.AppendLine("            return result;");
             sb.AppendLine("        }");
 
+            // JSON Load（开发期 / 热更可读）
+            sb.AppendLine();
+            sb.AppendLine($"        public static {table.TableName}[] LoadJson(string json)");
+            sb.AppendLine("        {");
+            sb.AppendLine("            var reader = new JsonReader(json);");
+            sb.AppendLine("            reader.Expect('[');");
+            sb.AppendLine("            if (reader.TryExpect(']')) return Array.Empty<" + table.TableName + ">();");
+            sb.AppendLine($"            var list = new List<{table.TableName}>(64);");
+            sb.AppendLine("            while (true)");
+            sb.AppendLine("            {");
+            sb.AppendLine($"                var row = new {table.TableName}();");
+            sb.AppendLine("                row.ReadJson(ref reader);");
+            sb.AppendLine("                list.Add(row);");
+            sb.AppendLine("                if (reader.TryExpect(']')) break;");
+            sb.AppendLine("                reader.Expect(',');");
+            sb.AppendLine("            }");
+            sb.AppendLine("            return list.ToArray();");
+            sb.AppendLine("        }");
+
+            sb.AppendLine();
+            sb.AppendLine($"        public static {table.TableName}[] LoadJsonFromFile(string path)");
+            sb.AppendLine("            => LoadJson(File.ReadAllText(path));");
+
             if (canIndex)
             {
                 sb.AppendLine();
@@ -96,7 +138,16 @@ namespace ExcelConfigCompiler.Compiler
                 sb.AppendLine("            return _cache;");
                 sb.AppendLine("        }");
                 sb.AppendLine();
-                sb.AppendLine("        /// <summary>查询阶段不产生 GC，前提是先调用过 LoadAndCache。</summary>");
+                sb.AppendLine($"        public static {table.TableName}[] LoadJsonAndCache(string json)");
+                sb.AppendLine("        {");
+                sb.AppendLine("            _cache = LoadJson(json);");
+                sb.AppendLine("            _indexById = new Dictionary<int, int>(_cache.Length);");
+                sb.AppendLine("            for (int i = 0; i < _cache.Length; i++)");
+                sb.AppendLine($"                _indexById[_cache[i].{idField.CSharpName}] = i;");
+                sb.AppendLine("            return _cache;");
+                sb.AppendLine("        }");
+                sb.AppendLine();
+                sb.AppendLine("        /// <summary>查询阶段不产生 GC，前提是先调用过 LoadAndCache / LoadJsonAndCache。</summary>");
                 sb.AppendLine($"        public static {table.TableName} Get(int id)");
                 sb.AppendLine("        {");
                 sb.AppendLine("            if (_cache == null || _indexById == null)");

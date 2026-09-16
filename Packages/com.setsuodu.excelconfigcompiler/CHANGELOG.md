@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.2.0] - 2026-09-16
+
+### Added
+- **AOT 零反射 JSON** 支持
+  - Runtime: `JsonReader`（ref struct）、`JsonWriter`
+  - Compiler: `JsonGenerator`（TableDef → JSON 数组）
+  - 生成代码：`struct.ReadJson` / `Table.LoadJson` / `LoadJsonFromFile` / `LoadJsonAndCache`
+  - `CompilePipeline.Options.ExportJson` + `ClientJsonDir` / `ServerJsonDir`
+- 与 binary 共用 Schema；JSON 字段名 = CSharpName；未知字段 `SkipValue` 向前兼容
+
+### Notes
+- 正式包仍推荐 `.bytes`；JSON 面向开发期与热更可读场景
+- 不依赖 System.Text.Json / Newtonsoft / JsonUtility，IL2CPP/AOT 安全
+
 ## [1.1.0] - 2026-09-13
 
 ### Added

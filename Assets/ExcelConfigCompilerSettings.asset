@@ -20,3 +20,6 @@ MonoBehaviour:
   ServerCodeFolder: 
   ServerBytesFolder: 
   UseFrozenDictionary: 1
+  ExportJson: 1
+  ClientJsonFolder: Assets/Config/Json
+  ServerJsonFolder: 

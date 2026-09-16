@@ -17,6 +17,7 @@ namespace ExcelConfigCompiler.Compiler
             public int TotalRows;
             public List<string> GeneratedCodeFiles = new List<string>();
             public List<string> GeneratedBinaryFiles = new List<string>();
+            public List<string> GeneratedJsonFiles = new List<string>();
             public List<string> Messages = new List<string>();
             public string ManifestPath;
         }
@@ -35,6 +36,15 @@ namespace ExcelConfigCompiler.Compiler
             public string ServerNamespace = "Game.Server.Config";
 
             public bool UseFrozenDictionary = true;
+
+            /// <summary>是否额外导出 JSON（开发期/热更可读）。默认 false，正式包仍用 .bytes。</summary>
+            public bool ExportJson = false;
+
+            /// <summary>客户端 JSON 输出目录；空则跟随 ClientBytesDir 旁的 Json 子逻辑——实际以本字段为准。</summary>
+            public string ClientJsonDir;
+
+            /// <summary>服务器 JSON 输出目录。</summary>
+            public string ServerJsonDir;
 
             /// <summary>tables.lock.json 路径；空则写到 ExcelRoot/tables.lock.json</summary>
             public string ManifestPath;
@@ -78,6 +88,9 @@ namespace ExcelConfigCompiler.Compiler
             string clientNs = string.IsNullOrWhiteSpace(options.ClientNamespace) ? "Game.Config" : options.ClientNamespace;
             string serverNs = string.IsNullOrWhiteSpace(options.ServerNamespace) ? "Game.Server.Config" : options.ServerNamespace;
 
+            string clientJson = string.IsNullOrWhiteSpace(options.ClientJsonDir) ? null : Path.GetFullPath(options.ClientJsonDir);
+            string serverJson = string.IsNullOrWhiteSpace(options.ServerJsonDir) ? null : Path.GetFullPath(options.ServerJsonDir);
+
             var files = CollectClassifiedXlsx(inputPath);
             if (files.Count == 0)
                 throw new CompileException(inputPath, null, null, null, null,
@@ -108,6 +121,7 @@ namespace ExcelConfigCompiler.Compiler
                             File.WriteAllBytes(primaryBytesPath, bytes);
                             result.GeneratedBinaryFiles.Add(primaryBytesPath);
                             result.Messages.Add("[OK][Client] " + table.TableName + " → code/bytes 客户端");
+                            MaybeWriteJson(table, options.ExportJson, clientJson, result, "Client");
                             break;
 
                         case TableTarget.Server:
@@ -120,6 +134,7 @@ namespace ExcelConfigCompiler.Compiler
                             File.WriteAllBytes(primaryBytesPath, bytes);
                             result.GeneratedBinaryFiles.Add(primaryBytesPath);
                             result.Messages.Add("[OK][Server] " + table.TableName + " → code/bytes 服务器");
+                            MaybeWriteJson(table, options.ExportJson, serverJson, result, "Server");
                             break;
 
                         case TableTarget.Shared:
@@ -138,6 +153,7 @@ namespace ExcelConfigCompiler.Compiler
                                 File.WriteAllBytes(cb, bytes);
                                 result.GeneratedBinaryFiles.Add(cb);
                                 primaryBytesPath = cb;
+                                MaybeWriteJson(table, options.ExportJson, clientJson, result, "Client");
                             }
                             if (!string.IsNullOrEmpty(serverCode))
                             {
@@ -149,6 +165,7 @@ namespace ExcelConfigCompiler.Compiler
                                 File.WriteAllBytes(sb, bytes);
                                 result.GeneratedBinaryFiles.Add(sb);
                                 if (primaryBytesPath == null) primaryBytesPath = sb;
+                                MaybeWriteJson(table, options.ExportJson, serverJson, result, "Server");
                             }
                             result.Messages.Add("[OK][Shared] " + table.TableName + " → 已写到已配置的端（同一 wire format）");
                             break;
@@ -180,6 +197,18 @@ namespace ExcelConfigCompiler.Compiler
             result.Messages.Add("[OK] manifest → " + manifestPath);
 
             return result;
+        }
+
+
+        private static void MaybeWriteJson(TableDef table, bool exportJson, string jsonDir, Result result, string tag)
+        {
+            if (!exportJson || string.IsNullOrEmpty(jsonDir)) return;
+            Directory.CreateDirectory(jsonDir);
+            var json = JsonGenerator.Generate(table);
+            var path = Path.Combine(jsonDir, table.TableName + ".json");
+            File.WriteAllText(path, json, System.Text.Encoding.UTF8);
+            result.GeneratedJsonFiles.Add(path);
+            result.Messages.Add("[OK][" + tag + "] " + table.TableName + " → json");
         }
 
         private static void RequireDir(string dir, string message)

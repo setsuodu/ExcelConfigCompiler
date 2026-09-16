@@ -1,67 +1,78 @@
-# ExcelConfigCompiler
+# Excel Config Compiler
 
-Unity / .NET 用的轻量 Excel 配置编译器。
+Unity / .NET 轻量导表：按 **Client / Server / Shared** 分流，生成 C# + `.bytes`，可选 **AOT 零反射 JSON**。
 
-```
-.xlsx  →  EPPlus（仅编译期）  →  Schema  →  *.cs + *.bytes
-                                              ↑
-                                    Runtime ByteReader 加载
-```
+- 客户端：可变 `struct` + `Dictionary`
+- 服务器：`readonly struct` + 可选 `FrozenDictionary`
+- Shared：两端代码各一份，**同一份 wire format bytes**（分别写入你配置的客户端/服务器 bytes 目录）
+- JSON（可选）：与 binary 同一套 Schema 静态生成 `ReadJson` / `LoadJson`，**无反射、无第三方 JSON 库**，AOT/IL2CPP 安全
 
-- **包名**：`com.setsuodu.excelconfigcompiler`  
-- **OpenUPM**：https://openupm.com/packages/com.setsuodu.excelconfigcompiler/  
-- **面向使用者的说明**：见包内 [`Packages/com.setsuodu.excelconfigcompiler/README.md`](Packages/com.setsuodu.excelconfigcompiler/README.md)（安装、Excel 格式、Editor / 运行时）
+## Excel 目录（强制）
 
-本仓库 README 侧重**开发与发布**；第三方集成以包 README 为准。
-
-## 仓库结构
-
-```
-Packages/com.setsuodu.excelconfigcompiler/
-  Runtime/          # ByteReader / ByteWriter / BinaryFormat（进游戏包）
-  Editor/           # 导表窗口 + Compiler（仅 Editor）
-  Editor/Compiler/  # 与 CLI 共用的解析 / 生成逻辑
-  Cli/              # 外部 / CI 单文件 exe
-  Samples~/         # UPM Sample（需在 Package Manager 里 Import）
-  docs/             # 维护者补充说明（如 EPPlus）
+```text
+Excel/
+  Client/
+  Server/
+  Shared/
 ```
 
-Unity 工程根下的 `Assets/`、`ProjectSettings/` 仅用于本地打开包开发，**不是**下游游戏工程模板。
+禁止把 xlsx 直接放在 Excel 根下。
 
-## 本地开发
+## Editor 配置（三者分开）
 
-1. 用 Unity 2022.3+ 打开本仓库  
-2. 放入 EPPlus.dll（见包 README）  
-3. **Tools → Excel Config Compiler** 验证导表  
+| 配置 | 含义 |
+|------|------|
+| Excel 根目录 | 含 Client/Server/Shared |
+| 客户端命名空间 / 代码目录 / bytes 目录 | 只写客户端产物，**不再拼 `/client`** |
+| 服务器命名空间 / 代码目录 / bytes 目录 | 只写服务器产物；命名空间与客户端独立 |
+| ExportJson + Client/Server Json 目录 | 可选；开发期/热更可读 JSON，正式包仍用 `.bytes` |
 
-## CLI 构建与发布
+`tables.lock.json` 默认写在 Excel 根目录。
+
+## CLI
 
 ```bash
-cd Packages/com.setsuodu.excelconfigcompiler/Cli
-dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true
+ExcelConfigCompiler ./Excel \
+  --client-code ./ClientGen --client-bytes ./ClientBytes \
+  --server-code ./ServerGen --server-bytes ./ServerBytes \
+  -n Game.Config --server-namespace Game.Server.Config
 ```
 
-CI：GitHub Actions **Publish CLI**（`workflow_dispatch` 手动触发）。  
-填写 `version`（如 `v1.0.1`）且勾选 `create_release` 时，会把多平台 exe 挂到 [Releases](https://github.com/setsuodu/ExcelConfigCompiler/releases)。
+开启 JSON 时在 `CompilePipeline.Options` 中设置：
 
-若仓库尚无 `Cli/ExcelConfigCompiler.Cli.csproj`，Action 会在构建时生成一份最小工程（编译 `Program.cs` + `Editor/Compiler` + `Runtime`）。建议将 csproj **提交进仓库**，避免 CI 与本地不一致。
-
-## 二进制格式（实现约定）
-
-```
-MAGIC    4  'E''X''C''F'
-VERSION  4  int32 = 1
-COUNT    4  行数
-ROW×N    字段顺序与表定义一致，Little Endian
-string:  int32 长度（-1=null，0=空串）+ UTF-8
-array:   int32 个数 + 元素…
+```csharp
+ExportJson = true,
+ClientJsonDir = "./ClientJson",
+ServerJsonDir = "./ServerJson",
 ```
 
-## 路线图（简）
+## 运行时加载
 
-- [x] C# 生成 + `.bytes` + Editor 一键导表 + CLI  
-- [ ] 多语言 Generator  
-- [ ] Enum / Dictionary / 跨表 Ref  
+```csharp
+// 正式包：binary（推荐）
+var items = ItemConfigTable.Load(bytes);
+// 或带索引
+var items = ItemConfigTable.LoadAndCache(bytes);
+var row = ItemConfigTable.Get(1001);
+
+// 开发期 / 热更：AOT JSON（零反射）
+var items = ItemConfigTable.LoadJsonFromFile(path);
+// 或
+var items = ItemConfigTable.LoadJson(jsonText);
+var items = ItemConfigTable.LoadJsonAndCache(jsonText);
+```
+
+JSON 格式为数组 of object，字段名与 C# 属性一致：
+
+```json
+[{"Id":1,"Name":"sword","Attrs":[1,2,3]},{"Id":2,"Name":"shield","Attrs":[]}]
+```
+
+## 设计要点
+
+- Binary 与 JSON **共用同一 Schema**，生成代码里字段顺序/名称一致
+- `JsonReader` 为 `ref struct`，只实现导表子集，不引入 `System.Text.Json` / Newtonsoft / `JsonUtility`
+- 性能定位：去掉反射 JSON 库依赖，方便调试与热更；极限性能仍以 `.bytes` 为准
 
 ## License
 
